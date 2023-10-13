@@ -23,6 +23,7 @@ D8: RTC Rst
 // For led chips like Neopixels, which have a data line, ground, and power, you just
 // need to define DATA_PIN.  For led chipsets that are SPI based (four wires - data, clock,
 // ground, and power), like the LPD8806, define both DATA_PIN and CLOCK_PIN
+#define BUTTON_LED 3
 #define BUTTON_PIN 4
 #define LED_DATA_PIN 5
 #define RTC_Clk 6
@@ -43,6 +44,7 @@ ezButton button(BUTTON_PIN);  // create ezButton object that attach to pin 7;
 
 #define one_day 86400  //1 day has 86400s
 int since_days = 0;
+int old_since_days = -99;
 
 // Creation of the Real Time Clock Object
 // virtuabotixRTC(uint8_t inSCLK, uint8_t inIO, uint8_t inC_E);
@@ -56,7 +58,7 @@ int addr = 0;
 
 
 void setup() {
-  Serial.begin(57600);
+  Serial.begin(115200);
   Serial.println("resetting");
   FastLED.addLeds<WS2812, LED_DATA_PIN , GRB>(leds, NUM_LEDS);
   FastLED.setBrightness(84);
@@ -70,17 +72,18 @@ void setup() {
   T1.Month = myRTC.month;
   T1.Year = myRTC.year - 1970; // because Year is offset from 1970
 
-  /*
+/*
     //Uncomment this block to update the date-time
     // Set the current date, and time in the following format:
     // seconds, minutes, hours, day of the week, day of the month, month, year
-    myRTC.setDS1302Time(00, 07, 13, 4, 6, 9, 2023);
+    myRTC.setDS1302Time(00, 12, 15, 6, 13, 10, 2023);
     myRTC.updateTime();
+    EEPROM.put(addr, T1); // EEPROM.put(eeAddress, customVar);
+*/
 
-  */
-
-  EEPROM.put(addr, T1); // EEPROM.put(eeAddress, customVar);
   button.setDebounceTime(50); // set debounce time to 50 milliseconds
+  pinMode(BUTTON_LED, OUTPUT);
+  digitalWrite(BUTTON_LED, true);
 }
 
 //void fadeall() { for(int i = INILED; i < ENDLED; i++) { leds[i].nscale8(250); } }
@@ -401,11 +404,10 @@ void compute_RTC(void)
   Serial.print( " minute(s) and " );
   Serial.print( seconds );
   Serial.println( " second(s) before T2." );
+ }
 
-  // Delay so the program doesn't print non-stop
-  //delay( 1000);
+ void isButtonPressed (void){
   button.loop(); // MUST call the loop() function first
-
   if (button.isPressed())
   {
     Serial.println("***************************The button is pressed********************************");
@@ -420,14 +422,62 @@ void compute_RTC(void)
     EEPROM.put(addr, T1); // EEPROM.put(eeAddress, customVar);
     button.setDebounceTime(50); // set debounce time to 50 milliseconds
   }
+ }
 
-  delay(1000);
+
+
+#define  fadeDelay 30
+long double last_delay = millis();
+int brightness = 0;
+bool toggle =  true;
+
+void fade() {
+  // Fade in
+  if (toggle)
+  {
+    brightness ++;
+    if (brightness >= 255) toggle = false;
+   
   }
+
+
+  else{
+    brightness --;
+    if (brightness <= 0) 
+    {
+      toggle = true;
+      brightness = -40; //just to keep it a bit more time off
+    }
+
+  }
+  if (brightness>0) analogWrite(BUTTON_LED, brightness);
+}
+
+
+
+long double last_synch = millis();
+#define synch_time 1000
+
+
 
 void loop() {
-  for (int j = 0; j <= 99; j++) {
-    Sender(j);
-    delay (250);
-  }
-
+    
+    if (millis() - last_synch > synch_time){
+        last_synch = millis();
+        compute_RTC(); // Computes the difference between the last time when the button was pressed and the current time
+    }
+    
+    if (millis() - last_delay > fadeDelay){
+        last_delay = millis();
+        fade();
+    }  
+    
+    isButtonPressed();  //Check if button is pressed if so, store the new time    
+    if (old_since_days != since_days){
+      Sender(since_days); //display the number of days
+      old_since_days = since_days ;
+    }
+    
+    
+  
 }
